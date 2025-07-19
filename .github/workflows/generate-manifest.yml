@@ -2,64 +2,35 @@ name: Generate Article Manifest
 
 on:
   push:
-    branches:
-      - main
     paths:
       - 'articles/**'
-  workflow_dispatch:
+      - '.github/workflows/generate-manifest.yml'
 
 jobs:
   generate-manifest:
     runs-on: ubuntu-latest
-    
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        persist-credentials: false
 
-      - name: Generate article manifest
-        run: |
-          cd articles
-          echo "Generating article manifest..."
-          echo "{" > ../manifest.json
-          echo "  \"articles\": [" >> ../manifest.json
-          first=true
-          for file in *.html; do
-            if [ -f "$file" ]; then
-              if [ "$first" = true ]; then
-                first=false
-              else
-                echo "," >> ../manifest.json
-              fi
-              echo "    {" >> ../manifest.json
-              echo "      \"filename\": \"$file\"," >> ../manifest.json
-              # Extract title from the HTML file
-              title=$(grep -o '<title>.*</title>' "$file" | sed 's/<title>\(.*\)<\/title>/\1/')
-              if [ -z "$title" ]; then
-                title=$(grep -o '<h1>.*</h1>' "$file" | sed 's/<h1>\(.*\)<\/h1>/\1/')
-              fi
-              if [ -z "$title" ]; then
-                title="${file%.html}"
-              fi
-              echo "      \"title\": \"$title\"," >> ../manifest.json
-              # Extract date from filename if it exists (format: YYYY-MM-DD-title.html)
-              date=$(echo "$file" | grep -o '^[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}')
-              if [ -z "$date" ]; then
-                date="Recent"
-              fi
-              echo "      \"date\": \"$date\"" >> ../manifest.json
-              echo "    }" >> ../manifest.json
-            fi
-          done
-          echo "  ]" >> ../manifest.json
-          echo "}" >> ../manifest.json
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
 
-      - name: Commit manifest
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add manifest.json
-          git diff --quiet && git diff --staged --quiet || git commit -m "Update article manifest"
-          git push
+    - name: Generate manifest.json
+      run: |
+        mkdir -p articles
+        ls articles/*.html 2>/dev/null | sed 's|articles/||' | jq -R . | jq -s . > articles/manifest.json
+        echo "Generated manifest.json:"
+        cat articles/manifest.json
 
-permissions:
-  contents: write
+    - name: Commit and push manifest.json
+      uses: stefanzweifel/git-auto-commit-action@v5
+      with:
+        commit_message: "📝 Auto-update articles/manifest.json"
+        file_pattern: articles/manifest.json
+        branch: ${{ github.ref_name }}
